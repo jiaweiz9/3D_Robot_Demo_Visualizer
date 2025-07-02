@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import flask_cors
 import numpy as np
 import os
-from loader.load_from_zarr import load_data_from_zarr
+from loader.load_from_file import load_data_from_file
 
 class VisualizerApp:
     cached_pointcloud_data = None
@@ -33,7 +33,8 @@ class VisualizerApp:
                 if not os.path.exists(file_path):
                     return jsonify({'success': False, 'error': f'path is invalid: {file_path}'})
                 
-                point_cloud_list = load_data_from_zarr(file_path) 
+                point_cloud_list = load_data_from_file(file_path) 
+                print(f"Loaded {len(point_cloud_list)} episodes from {file_path}")
                 
                 if len(point_cloud_list) <= 0:
                     return jsonify({
