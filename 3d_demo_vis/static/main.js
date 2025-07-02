@@ -49,15 +49,18 @@ geometry.setAttribute('color', new THREE.Float32BufferAttribute(initialColors, 3
 const pointCloud = new THREE.Points(geometry, material);
 scene.add(pointCloud);
 
+let episodeCount = 0;
+let episodeId = 0;
 
 let gui;
 let currentFrameController; 
 let currentFrame = 0;
+let poseFolder;
 const params = {
     isPlaying: false,
     playbackSpeed: 1.0,
     currentFrame: 0,
-    pointSize: 0.1,
+    pointSize: 0.01,
     totalFrames: T,
     annotationMode: false,
     pose: {
@@ -68,7 +71,7 @@ const params = {
 
 
 function createGUI() {
-
+    
     if (gui) gui.destroy(); 
     
     gui = new GUI();
@@ -78,7 +81,7 @@ function createGUI() {
         currentFrame = Math.floor(value);
         updatePointCloudFrame(currentFrame);
     });
-    gui.add(params, 'pointSize', 0.01, 0.1).name('Point Size').onChange((value) => {
+    gui.add(params, 'pointSize', 0.005, 0.03).name('Point Size').onChange((value) => {
         material.size = value;
     });
     gui.add(params, 'totalFrames').name('Total Frame').listen();
@@ -90,11 +93,21 @@ function createGUI() {
         // Once entering Annotation Mode，prohibit OrbitControls to avoid conflicts
         // orbitControls.enabled = !value;
     });
-
+    
+    poseFolder = gui.addFolder('Gizmo 6D Pose');
+    poseFolder.add(params.pose, 'x').listen().disable();
+    poseFolder.add(params.pose, 'y').listen().disable();
+    poseFolder.add(params.pose, 'z').listen().disable();
+    poseFolder.add(params.pose, 'rx').listen().disable();
+    poseFolder.add(params.pose, 'ry').listen().disable();
+    poseFolder.add(params.pose, 'rz').listen().disable();
+    poseFolder.open();
+    
     return params;
 }
 
 createGUI();
+
 
 function updatePointCloudData(newData) {
     // newData shape: (300, 1024, 6) -> (300, 1024 * 6)
@@ -143,7 +156,7 @@ async function loadZarrData(filePath, statusElement) {
     if (!filePath.trim()) {
         statusElement.textContent = 'Please input valid zarr/H5 file path';
         statusElement.style.color = 'red';
-        return;
+        return null;
     }
 
     statusElement.textContent = 'Loading...';
@@ -157,7 +170,6 @@ async function loadZarrData(filePath, statusElement) {
             },
             body: JSON.stringify({ 
                 path: filePath,
-                traj_id: 0,
             })
         });
 
@@ -168,15 +180,55 @@ async function loadZarrData(filePath, statusElement) {
         const data = await response.json();
         
         if (data.success) {
-            updatePointCloudData(data.point_cloud_data);
-            statusElement.textContent = `Successfully Loaded Point Cloud Data: ${T} Frames; ${D} Points Per Frame`;
+            statusElement.textContent = `Successfully Loaded ${data.episode_count} Episodes`;
             statusElement.style.color = 'green';
+            return data;
         } else {
             throw new Error(data.error || 'Loading failed');
         }
     } catch (error) {
         console.error('Loading failed:', error);
         statusElement.textContent = `Loading failed: ${error.message}`;
+        statusElement.style.color = 'red';
+        return null;
+    }
+}
+
+async function showEpisodeData(episodeId, statusElement) {
+    if (!Number.isInteger(episodeId) || episodeId >= episodeCount || episodeId < 0) {
+        console.error('Invalid episode ID');
+        statusElement.textContent = 'Invalid episode ID';
+        statusElement.style.color = 'red';
+        return;
+    }
+
+    statusElement.textContent = `Loading episode ${episodeId}...`;
+    statusElement.style.color = 'yellow';
+
+    try {
+        const response = await fetch(`/show_episode`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                episode_id: episodeId,
+            })
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.success) {
+            updatePointCloudData(data.episode_data);
+            statusElement.textContent = `Successfully Loaded Episode ${episodeId}`;
+            statusElement.style.color = 'green';
+        } else {
+            throw new Error(data.error || 'Loading failed');
+        }
+    } catch (error) {
+        console.error('Loading episode failed:', error);
+        statusElement.textContent = `Loading episode failed: ${error.message}`;
         statusElement.style.color = 'red';
     }
 }
@@ -216,17 +268,95 @@ function createFilePathInput() {
     loadButton.style.borderRadius = '4px';
     loadButton.style.cursor = 'pointer';
 
-    const statusDiv = document.createElement('div');
-    statusDiv.style.marginTop = '10px';
-    statusDiv.style.fontSize = '14px';
-    statusDiv.id = 'loadStatus';
+    const loadStatusDiv = document.createElement('div');
+    loadStatusDiv.style.marginTop = '7px';
+    loadStatusDiv.style.fontSize = '14px';
+    loadStatusDiv.id = 'loadStatus';
 
-    loadButton.addEventListener('click', () => loadZarrData(input.value, statusDiv));
+    const episodeContainer = document.createElement('div');
+    episodeContainer.style.marginTop = '10px';
+    
+    const episodeLabel = document.createElement('label');
+    episodeLabel.textContent = 'Episode ID: ';
+    episodeLabel.style.marginRight = '5px';
 
+    const episodeInput = document.createElement('input');
+    episodeInput.type = 'number';
+    episodeInput.min = '0';
+    episodeInput.max = '0';
+    episodeInput.value = '0';
+    episodeInput.style.width = '60px';
+    episodeInput.style.padding = '4px';
+    episodeInput.style.marginRight = '5px';
+    episodeInput.style.borderRadius = '4px';
+    episodeInput.style.border = 'none';
+
+    const prevButton = document.createElement('button');
+    prevButton.textContent = 'Prev';
+    prevButton.style.padding = '4px 7px';
+    prevButton.style.backgroundColor = 'rgba(124, 124, 124, 0.5)';
+    prevButton.style.color = 'white';
+    prevButton.style.border = 'none';
+    prevButton.style.borderRadius = '4px';
+    prevButton.style.cursor = 'pointer';
+    prevButton.style.marginRight = '5px';
+
+    const nextButton = document.createElement('button');
+    nextButton.textContent = 'Next';
+    nextButton.style.padding = '4px 7px';
+    nextButton.style.backgroundColor = 'rgba(124, 124, 124, 0.5)';
+    nextButton.style.color = 'white';
+    nextButton.style.border = 'none';
+    nextButton.style.borderRadius = '4px';
+    nextButton.style.cursor = 'pointer';
+
+    const showStatusDiv = document.createElement('div');
+    showStatusDiv.style.marginTop = '7px';
+    showStatusDiv.style.fontSize = '14px';
+    showStatusDiv.id = 'loadStatus';
+
+    const updateEpisodeId = (newId) => {
+        episodeId = parseInt(newId);
+        if (episodeId < 0) episodeId = 0;
+        if (episodeId >= episodeCount) episodeId = episodeCount - 1;
+        episodeInput.value = episodeId;
+        showEpisodeData(episodeId, showStatusDiv);
+    };
+
+    episodeInput.addEventListener('change', () => {
+        updateEpisodeId(episodeInput.value);
+    });
+
+    prevButton.addEventListener('click', () => {
+        updateEpisodeId(episodeId - 1);
+    });
+
+    nextButton.addEventListener('click', () => {
+        updateEpisodeId(episodeId + 1);
+    });
+
+    loadButton.addEventListener('click', async () => {
+        const response = await loadZarrData(input.value, loadStatusDiv);
+        if (response && response.success) {
+            episodeCount = response.episode_count;
+            episodeInput.max = episodeCount - 1;
+            episodeId = 0;
+            episodeInput.value = 0;
+            await showEpisodeData(episodeId, showStatusDiv);
+        }
+    });
+
+    episodeContainer.appendChild(episodeLabel);
+    episodeContainer.appendChild(episodeInput);
+    episodeContainer.appendChild(prevButton);
+    episodeContainer.appendChild(nextButton);
+    
     inputContainer.appendChild(label);
     inputContainer.appendChild(input);
     inputContainer.appendChild(loadButton);
-    inputContainer.appendChild(statusDiv);
+    inputContainer.appendChild(loadStatusDiv);
+    inputContainer.appendChild(episodeContainer);
+    inputContainer.appendChild(showStatusDiv);
     
     document.body.appendChild(inputContainer);
 }
@@ -261,14 +391,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 // --- 6. Record Gizmo pose ---
-const poseFolder = gui.addFolder('Gizmo 6D Pose');
-poseFolder.add(params.pose, 'x').listen().disable();
-poseFolder.add(params.pose, 'y').listen().disable();
-poseFolder.add(params.pose, 'z').listen().disable();
-poseFolder.add(params.pose, 'rx').listen().disable();
-poseFolder.add(params.pose, 'ry').listen().disable();
-poseFolder.add(params.pose, 'rz').listen().disable();
-poseFolder.open();
+
 
 transformControls.addEventListener('change', () => {
     // Update position
@@ -319,7 +442,6 @@ function animate() {
             currentFrameController.updateDisplay();
         }
     }
-
     renderer.render(scene, camera);
 }
 
