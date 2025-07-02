@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import flask_cors
 import numpy as np
 import os
@@ -16,6 +16,10 @@ class VisualizerApp:
         @self.flask_app.route('/')
         def index():
             return render_template('index.html')
+        
+        @self.flask_app.route('/mesh')
+        def mesh():
+            return render_template('mesh.html')
 
         @self.flask_app.route('/load_zarr', methods=['POST'])
         def load_zarr_data():
@@ -72,6 +76,28 @@ class VisualizerApp:
                 
             except Exception as e:
                 return jsonify({'success': False, 'error': f'failed: {str(e)}'})
+        
+
+        @self.flask_app.route('/load_mesh', methods=['POST'])
+        def load_mesh_from_path():
+            data = request.get_json()
+            file_path = data.get('file_path', '')
+            print(f"Loading mesh from path: {file_path}")
+            if not file_path:
+                return jsonify({'success': False, 'error': 'path is required'})
+
+            print(f"Checking if file exists: {os.path.exists(file_path)}")
+            print(f"Checking if path is a file: {os.path.isfile(file_path)}")
+
+            if not os.path.exists(file_path) or not os.path.isfile(file_path):
+                return jsonify({'success': False, 'error': f'path is invalid: {file_path}'})
+                
+            try:
+                directory = os.path.dirname(file_path)
+                filename = os.path.basename(file_path)
+                return send_from_directory(directory, filename)
+            except Exception as e:
+                return jsonify({'success': False, 'error': "An error occurred while reading the file", 'details': str(e)}), 500
 
 
     def run(self, debug=True, port=8000):

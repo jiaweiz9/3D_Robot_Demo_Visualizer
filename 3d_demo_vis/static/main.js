@@ -19,7 +19,7 @@ document.body.appendChild(renderer.domElement);
 const axesHelper = new THREE.AxesHelper(0.5);
 scene.add(axesHelper);
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
 scene.add(ambientLight);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
 directionalLight.position.set(10, 10, 10);
@@ -69,7 +69,6 @@ const params = {
     }
 };
 
-
 function createGUI() {
     
     if (gui) gui.destroy(); 
@@ -107,7 +106,6 @@ function createGUI() {
 }
 
 createGUI();
-
 
 function updatePointCloudData(newData) {
     // newData shape: (300, 1024, 6) -> (300, 1024 * 6)
