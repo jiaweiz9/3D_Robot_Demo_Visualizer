@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import GUI from 'https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm';
 import { generateMockPointCloudSequence } from './mock_data.js'; 
+import { saveCurrentGizmoPose } from './utils.js'; // Import the utility function for saving pose
 
 // --- 1. Init Scene configs ---
 const scene = new THREE.Scene();
@@ -65,7 +66,7 @@ const params = {
     annotationMode: false,
     pose: {
         x: 0, y: 0, z: 0,
-        rx: 0, ry: 0, rz: 0
+        qx: 0, qy: 0, qz: 0, qw: 1
     }
 };
 
@@ -86,20 +87,17 @@ function createGUI() {
     gui.add(params, 'totalFrames').name('Total Frame').listen();
     gui.add(params, 'annotationMode').name('Annotation Mode').onChange(value => {
         transformControls.visible = value;
-        // transformControls.space
-        // gizmo.visible = value;
         transformControls.enabled = value;
-        // Once entering Annotation Mode，prohibit OrbitControls to avoid conflicts
-        // orbitControls.enabled = !value;
     });
     
     poseFolder = gui.addFolder('Gizmo 6D Pose');
     poseFolder.add(params.pose, 'x').listen().disable();
     poseFolder.add(params.pose, 'y').listen().disable();
     poseFolder.add(params.pose, 'z').listen().disable();
-    poseFolder.add(params.pose, 'rx').listen().disable();
-    poseFolder.add(params.pose, 'ry').listen().disable();
-    poseFolder.add(params.pose, 'rz').listen().disable();
+    poseFolder.add(params.pose, 'qw').listen().disable();
+    poseFolder.add(params.pose, 'qx').listen().disable();
+    poseFolder.add(params.pose, 'qy').listen().disable();
+    poseFolder.add(params.pose, 'qz').listen().disable();
     poseFolder.open();
     
     return params;
@@ -385,6 +383,15 @@ window.addEventListener('keydown', (event) => {
         case 'r':
             transformControls.setMode('rotate');
             break;
+        case 'c':
+            saveCurrentGizmoPose(params.pose, currentFrame).then(success => {
+                if (success) {
+                    console.log(`Pose saved for frame ${currentFrame}`);
+                } else {
+                    console.error('Failed to save pose');
+                }
+            });
+            break;
     }
 });
 
@@ -397,11 +404,11 @@ transformControls.addEventListener('change', () => {
     params.pose.y = parseFloat(gizmoTarget.position.y.toFixed(3));
     params.pose.z = parseFloat(gizmoTarget.position.z.toFixed(3));
 
-    // Update rotation
-    const euler = new THREE.Euler().setFromQuaternion(gizmoTarget.quaternion);
-    params.pose.rx = parseFloat(euler.x.toFixed(3));
-    params.pose.ry = parseFloat(euler.y.toFixed(3));
-    params.pose.rz = parseFloat(euler.z.toFixed(3));
+    // Update rotation as quaternion
+    params.pose.qx = parseFloat(gizmoTarget.quaternion.x.toFixed(3));
+    params.pose.qy = parseFloat(gizmoTarget.quaternion.y.toFixed(3));
+    params.pose.qz = parseFloat(gizmoTarget.quaternion.z.toFixed(3));
+    params.pose.qw = parseFloat(gizmoTarget.quaternion.w.toFixed(3));
 
     // console.log("Pose Updated:", params.pose);
 });

@@ -13,6 +13,7 @@ setup(
         "numpy>=1.21.0",
         "zarr>=2.12.0",
         "h5py>=3.0.0",
+        "transform3d>=0.4.2",
     ],
     python_requires=">=3.8",
 )

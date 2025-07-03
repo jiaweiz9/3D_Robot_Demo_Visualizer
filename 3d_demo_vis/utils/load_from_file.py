@@ -40,7 +40,8 @@ def load_data_from_file(path: str) -> Optional[list]:
     if not os.path.exists(path):
         raise FileNotFoundError(f"File not found: {path}")
     
-    if path.endswith('.zarr'):
+    if os.path.isdir(path):
+        # If the path is a directory, **assume** it's a Zarr dataset
         return load_data_from_zarr(path)
     elif path.endswith('.h5'):
         return load_data_from_h5(path)

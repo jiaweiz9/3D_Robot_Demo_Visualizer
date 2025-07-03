@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import flask_cors
 import numpy as np
 import os
-from loader.load_from_file import load_data_from_file
+from utils.load_from_file import load_data_from_file
 
 class VisualizerApp:
     cached_pointcloud_data = None
@@ -10,6 +10,8 @@ class VisualizerApp:
     def __init__(self):
         self.flask_app = Flask(__name__, template_folder='templates', static_folder='static')
         flask_cors.CORS(self.flask_app)
+        self.episode_id = 0
+        self.demo_path, self.mesh_path = None, None
         self.setup_routes()
 
     def setup_routes(self):
@@ -32,7 +34,8 @@ class VisualizerApp:
                 
                 if not os.path.exists(file_path):
                     return jsonify({'success': False, 'error': f'path is invalid: {file_path}'})
-                
+
+                self.demo_path = file_path 
                 point_cloud_list = load_data_from_file(file_path) 
                 print(f"Loaded {len(point_cloud_list)} episodes from {file_path}")
                 
@@ -65,6 +68,7 @@ class VisualizerApp:
             try:
                 data = request.get_json()
                 episode_id = data.get('episode_id', 0)
+                self.episode_id = int(episode_id)
                 
                 if VisualizerApp.cached_pointcloud_data is None:
                     return jsonify({'success': False, 'error': 'No point cloud data loaded'})
@@ -87,11 +91,9 @@ class VisualizerApp:
             if not file_path:
                 return jsonify({'success': False, 'error': 'path is required'})
 
-            print(f"Checking if file exists: {os.path.exists(file_path)}")
-            print(f"Checking if path is a file: {os.path.isfile(file_path)}")
-
             if not os.path.exists(file_path) or not os.path.isfile(file_path):
                 return jsonify({'success': False, 'error': f'path is invalid: {file_path}'})
+            self.mesh_path = file_path
                 
             try:
                 directory = os.path.dirname(file_path)
@@ -99,6 +101,30 @@ class VisualizerApp:
                 return send_from_directory(directory, filename)
             except Exception as e:
                 return jsonify({'success': False, 'error': "An error occurred while reading the file", 'details': str(e)}), 500
+    
+        @self.flask_app.route('/save_gizmo_pose', methods=['POST'])
+        def save_gizmo_pose():
+            try:
+                data = request.get_json()
+                pose = data.get('pose', [])
+                frame = data.get('frame', -1)
+                print(f"Saving pose: {pose}, frame: {frame}")
+            except Exception as e:
+                return jsonify({'success': False, 'error': f'failed: {str(e)}'})
+            if not isinstance(pose, list) or len(pose) != 7 or not isinstance(frame, int):
+                print(type(pose), len(pose), type(frame))
+                return jsonify({'success': False, 'error': 'Invalid pose or frame data'})
+            else:
+                from utils.transform import record_pose
+                try:
+                    path = self.mesh_path if frame < 0 else self.demo_path
+                    print(f"Recording pose to path: {path}")
+                    if not path:
+                        raise ValueError("Mesh path or demo path is not set")
+                    record_pose(pose, file_path=path, current_frame=frame)
+                    return jsonify({'success': True, 'message': 'Pose saved successfully'})
+                except Exception as e:
+                    return jsonify({'success': False, 'error': f'failed: {str(e)}'})
 
 
     def run(self, debug=True, port=8000):
