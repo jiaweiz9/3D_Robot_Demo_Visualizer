@@ -5,6 +5,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import GUI from 'https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm';
+import { saveCurrentGizmoPose } from './utils.js';
 
 // --- 1. Init Scene configs ---
 const scene = new THREE.Scene();
@@ -65,6 +66,15 @@ window.addEventListener('keydown', (event) => {
         case 'r':
             transformControls.setMode('rotate');
             break;
+        case 'c':
+            saveCurrentGizmoPose(params.pose, -1).then(success => {
+                if (success) {
+                    console.log(`Pose saved: ${params.pose.x}, ${params.pose.y}, ${params.pose.z}, ${params.pose.qx}, ${params.pose.qy}, ${params.pose.qz}, ${params.pose.qw}`);
+                } else {
+                    console.error('Failed to save pose');
+                }
+            });
+        break;
     }
 });
 transformControls.addEventListener('change', () => {
