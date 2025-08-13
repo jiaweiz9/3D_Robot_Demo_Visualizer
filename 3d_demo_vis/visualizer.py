@@ -108,7 +108,12 @@ class VisualizerApp:
                 data = request.get_json()
                 pose = data.get('pose', [])
                 frame = data.get('frame', -1)
-                print(f"Saving pose: {pose}, frame: {frame}")
+                scale = data.get('scale', 1.0)  # 新增：接收 scale
+                try:
+                    scale = float(scale)
+                except Exception:
+                    return jsonify({'success': False, 'error': 'Invalid scale value'})
+                print(f"Saving pose: {pose}, frame: {frame}, scale: {scale}")
             except Exception as e:
                 return jsonify({'success': False, 'error': f'failed: {str(e)}'})
             if not isinstance(pose, list) or len(pose) != 7 or not isinstance(frame, int):
@@ -118,11 +123,12 @@ class VisualizerApp:
                 from utils.transform import record_pose
                 try:
                     path = self.mesh_path if frame < 0 else self.demo_path
-                    print(f"Recording pose to path: {path}")
+                    print(f"Recording pose to path: {path} (scale={scale})")
                     if not path:
                         raise ValueError("Mesh path or demo path is not set")
-                    record_pose(pose, file_path=path, current_frame=frame)
-                    return jsonify({'success': True, 'message': 'Pose saved successfully'})
+                    # 目前 record_pose 不一定支持 scale，仅记录 pose；需要的话可在 utils 中扩展
+                    record_pose(pose, file_path=path, current_frame=frame, scale=scale)
+                    return jsonify({'success': True, 'message': 'Pose saved successfully', 'scale': scale})
                 except Exception as e:
                     return jsonify({'success': False, 'error': f'failed: {str(e)}'})
 

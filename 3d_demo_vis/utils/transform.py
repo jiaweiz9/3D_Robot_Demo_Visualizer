@@ -13,7 +13,7 @@ def quaternion_to_rotation_matrix(quaternion):
     return transforms3d.quaternions.quat2mat(quaternion)
 
 
-def record_pose(pose, file_path:str, current_frame:int = -1):
+def record_pose(pose, file_path:str, current_frame:int = -1, scale: float = 1.0):
     """
     Record the pose to a file.
     Args:
@@ -31,14 +31,15 @@ def record_pose(pose, file_path:str, current_frame:int = -1):
     if current_frame == -1:
         # annotating mesh
         mesh_dir = os.path.dirname(file_path) 
-        annoted_pose_file = os.path.join(mesh_dir, "annotated_poses.csv")
+        annoted_pose_file = os.path.join(mesh_dir, "tcp_annotated_poses.csv")
         print(f"Recording pose to {annoted_pose_file} for mesh annotation.")
     elif current_frame >= 0:
         # annotating point cloud
         if file_path.endswith('.h5'): # h5 format demo
-            annoted_pose_file = file_path.replace('.h5', '_annotated_poses.csv')
+            dir_name = os.path.dirname(file_path)
+            annoted_pose_file = os.path.join(dir_name, 'demo_annotated_poses.csv')
         elif os.path.isdir(file_path): # zarr format demo
-            annoted_pose_file = file_path + "_annotated_poses.csv"
+            annoted_pose_file = file_path + "_demo_annotated_poses.csv"
         print(f"Recording pose to {annoted_pose_file} for point cloud annotation.")
     else:
         raise ValueError("Current frame must be -1 or a positive integer.")
@@ -48,4 +49,4 @@ def record_pose(pose, file_path:str, current_frame:int = -1):
             f.write("frame,x,y,z,qw,qx,qy,qz\n")
 
     with open(annoted_pose_file, 'a') as f:
-        f.write(f"{current_frame},{pose[0]},{pose[1]},{pose[2]},{pose[3]},{pose[4]},{pose[5]},{pose[6]}\n")
+        f.write(f"{current_frame},{pose[0] / scale},{pose[1] / scale},{pose[2] / scale},{pose[3]},{pose[4]},{pose[5]},{pose[6]}\n")

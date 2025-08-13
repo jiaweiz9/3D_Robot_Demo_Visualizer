@@ -9,6 +9,7 @@ import { saveCurrentGizmoPose } from './utils.js';
 
 // --- 1. Init Scene configs ---
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x808080);
 const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 100);
 camera.up.set(0, 1, 0);
 camera.position.set(0.3, 0.3, 0.4);
@@ -41,7 +42,8 @@ const params = {
     pose: {
         x: 0, y: 0, z: 0,
         qx: 0, qy: 0, qz: 0, qw: 1
-    }
+    },
+    scale: 1.0 // 新增：mesh缩放
 };
 
 const gizmoTarget = new THREE.Object3D();
@@ -67,14 +69,26 @@ window.addEventListener('keydown', (event) => {
             transformControls.setMode('rotate');
             break;
         case 'c':
-            saveCurrentGizmoPose(params.pose, -1).then(success => {
-                if (success) {
-                    console.log(`Pose saved: ${params.pose.x}, ${params.pose.y}, ${params.pose.z}, ${params.pose.qx}, ${params.pose.qy}, ${params.pose.qz}, ${params.pose.qw}`);
+            // 改为直接发送，附带 scale
+            fetch('/save_gizmo_pose', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pose: [
+                        params.pose.x, params.pose.y, params.pose.z,
+                        params.pose.qx, params.pose.qy, params.pose.qz, params.pose.qw
+                    ],
+                    frame: -1,
+                    scale: params.scale
+                })
+            }).then(r => r.json()).then(resp => {
+                if (resp.success) {
+                    console.log(`Pose & scale saved. scale=${params.scale}`);
                 } else {
-                    console.error('Failed to save pose');
+                    console.error('Failed to save pose:', resp.error);
                 }
-            });
-        break;
+            }).catch(err => console.error('Save error:', err));
+            break;
     }
 });
 transformControls.addEventListener('change', () => {
@@ -164,6 +178,38 @@ function createFilePathInput() {
     loadStatusDiv.style.fontSize = '14px';
     loadStatusDiv.id = 'loadStatus';
 
+    // 新增：Scale 输入
+    const scaleContainer = document.createElement('div');
+    scaleContainer.style.marginTop = '10px';
+
+    const scaleLabel = document.createElement('label');
+    scaleLabel.textContent = 'Scale: ';
+    scaleLabel.style.marginRight = '5px';
+
+    const scaleInput = document.createElement('input');
+    scaleInput.type = 'number';
+    scaleInput.step = '0.01';
+    scaleInput.value = params.scale;
+    scaleInput.style.width = '80px';
+    scaleInput.style.padding = '4px';
+    scaleInput.style.borderRadius = '4px';
+    scaleInput.style.border = 'none';
+
+    scaleInput.addEventListener('change', () => {
+        const v = parseFloat(scaleInput.value);
+        if (!isNaN(v) && v > 0) {
+            params.scale = v;
+            if (loadedObject) {
+                loadedObject.scale.setScalar(params.scale);
+            }
+        } else {
+            scaleInput.value = params.scale;
+        }
+    });
+
+    scaleContainer.appendChild(scaleLabel);
+    scaleContainer.appendChild(scaleInput);
+
     loadButton.addEventListener('click', async () => {
         await loadObjFile(input.value, loadStatusDiv);
     });
@@ -172,6 +218,7 @@ function createFilePathInput() {
     inputContainer.appendChild(input);
     inputContainer.appendChild(loadButton);
     inputContainer.appendChild(loadStatusDiv);
+    inputContainer.appendChild(scaleContainer);
 
     document.body.appendChild(inputContainer);
 }
@@ -213,7 +260,9 @@ async function fetchFileAsBlobURL(filePath) {
     }
 
     const blob = await response.blob();
-    return URL.createObjectURL(blob);
+    console.log('File fetched successfully:', filePath);
+    // return URL.createObjectURL(blob);
+    return blob
 }
 
 
@@ -229,7 +278,7 @@ async function loadObjFile(filePath, statusElement) {
         disposeObject(loadedObject);
         loadedObject = null;
     }
-    console.log(loadedMaterial)
+    // console.log(loadedMaterial)
     // if (loadedMaterial) {
     //     disposeMaterial(loadedMaterial);
     //     loadedMaterial = null;
@@ -238,9 +287,78 @@ async function loadObjFile(filePath, statusElement) {
     const mtlFilePath = fileDir + '/material.mtl';
     console.log('MTL file path:', mtlFilePath);
 
+    // // Load MTL file if exists
+    // try {
+    //     // Try to load the .png texture
+    //     const textureFilePath = fileDir + '/material_0.png';
+    //     try {
+    //         const textureBlobURL = await fetchFileAsBlobURL(textureFilePath);
+    //         const textureLoader = new THREE.TextureLoader();
+    //         textureLoader.load(textureBlobURL, (texture) => {
+    //             console.log('Texture loaded:', texture);
+    //             texture.colorSpace = THREE.SRGBColorSpace; // Ensure color space is set correctly
+    //             if (loadedMaterial.materials && loadedMaterial.materials.length > 0) {
+    //                 loadedMaterial.materials[0].map = texture;
+    //                 loadedMaterial.materials[0].needsUpdate = true;
+    //             }
+    //         })
+    //     } catch (error) {
+    //         console.warn('No texture file found or failed to load:', error);
+    //     }
+    //     const mtlBlobURL = await fetchFileAsBlobURL(mtlFilePath);
+    //     loadedMaterial = await new Promise((resolve, reject) => {
+    //         mtlLoader.load(mtlBlobURL, (materials) => {
+    //             materials.preload();
+    //             resolve(materials);
+    //         }, undefined, (error) => {
+    //             console.error('Failed to load MTL file:', error);
+    //             reject(new Error(`Failed to load MTL file: ${error.message}`));
+    //         });
+    //     });
+    //     console.log('Material loaded:', loadedMaterial);
+    //     objLoader.setMaterials(loadedMaterial);
+    // } catch (error) {
+    //     console.warn('No MTL file found or failed to load:', error);
+    //     loadedMaterial = null; // No material loaded
+    // }
+
+    // load .png texture (if exists), load .mtl file (if exists), and then load .obj file
+    // Try to load the .png texture
+    const textureFilePath = fileDir + '/material_0.png';
+    try {
+        const textureBlob = await fetchFileAsBlobURL(textureFilePath);
+        // save .png file in root directory (127.0.0.1)
+        const textureBlobURL = URL.createObjectURL(new Blob([textureBlob], { type: 'image/png' }));
+
+        console.log('Texture Blob:', textureBlob)
+        console.log('Texture file path:', textureFilePath);
+        console.log('Texture Blob URL:', textureBlobURL);
+
+        // const textureLoader = new THREE.TextureLoader();
+        // const texture = await new Promise((resolve, reject) => {
+        //     textureLoader.load(textureBlobURL, (texture) => {
+        //         console.log('Texture loaded:', texture);
+        //         texture.colorSpace = THREE.SRGBColorSpace; // Ensure color space is set correctly
+        //         resolve(texture);
+        //     }, undefined, (error) => {
+        //         console.warn('Failed to load texture:', error);
+        //         reject(new Error(`Failed to load texture: ${error.message}`));
+        //     });
+        // });
+
+        // // Create a basic material with the loaded texture
+        // const material = new THREE.MeshStandardMaterial({ map: texture });
+        // objLoader.setMaterials(material);
+
+    } catch (error) {
+        console.warn('No texture file found or failed to load:', error);
+    }
+
+
     // Load MTL file if exists
     try {
-        const mtlBlobURL = await fetchFileAsBlobURL(mtlFilePath);
+        const mtlBlob = await fetchFileAsBlobURL(mtlFilePath);
+        const mtlBlobURL = URL.createObjectURL(mtlBlob)
         loadedMaterial = await new Promise((resolve, reject) => {
             mtlLoader.load(mtlBlobURL, (materials) => {
                 materials.preload();
@@ -256,10 +374,11 @@ async function loadObjFile(filePath, statusElement) {
         console.warn('No MTL file found or failed to load:', error);
         loadedMaterial = null; // No material loaded
     }
-
+    
     // Load OBJ file
     try {
-        const objBlobURL = await fetchFileAsBlobURL(filePath);
+        const objBlob = await fetchFileAsBlobURL(filePath);
+        const objBlobURL = URL.createObjectURL(objBlob)
         loadedObject = await new Promise((resolve, reject) => {
             objLoader.load(objBlobURL, (object) => {
                 object.traverse((child) => {
@@ -268,6 +387,8 @@ async function loadObjFile(filePath, statusElement) {
                         child.receiveShadow = true;
                     }
                 });
+                // 新增：应用当前 scale
+                object.scale.setScalar(params.scale);
                 scene.add(object);
                 resolve(object);
             }, undefined, (error) => {
@@ -283,7 +404,7 @@ async function loadObjFile(filePath, statusElement) {
         loadedObject = null;
         return null;
     }
-        
+    
     statusElement.textContent = 'Loaded';
     statusElement.style.color = 'green';
 }

@@ -14,7 +14,7 @@ def load_data_from_zarr(path: str):# -> list:
         episode_start_index = zarr_data['meta/episode_ends'][traj_id - 1] if traj_id > 0 else 0
         pcd_data = zarr_data['data/point_cloud'][episode_start_index: episode_end_index]
         print(f"Loaded point cloud data for trajectory {traj_id}: shape {pcd_data.shape}")
-        pcd_data[..., 3:] = pcd_data[..., 3:] / 255.0  # Normalize RGB values to [0, 1]
+        pcd_data[..., 3:] = pcd_data[..., 3:]  # Normalize RGB values to [0, 1]
         pointclouds.append(pcd_data)
     
     return pointclouds
